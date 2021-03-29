@@ -8,7 +8,7 @@ bleach==3.3.0
 cffi==1.14.5
 click==7.1.2
 cycler==0.10.0
-dataclasses==0.8
+dataclasses==0.6
 decorator==4.4.2
 defusedxml==0.7.1
 entrypoints==0.3
@@ -50,7 +50,6 @@ pathspec==0.8.1
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==8.1.2
-pkg-resources==0.0.0
 prometheus-client==0.9.0
 prompt-toolkit==3.0.18
 ptyprocess==0.7.0

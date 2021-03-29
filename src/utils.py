@@ -3,6 +3,7 @@ import joblib
 import logging
 import nltk
 import numpy as np
+import os
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -59,6 +60,7 @@ def make_sets(
 
 def save_model(clf, name: str):
     output_path = project_root() + f"/models/{name}.pkl"
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     joblib.dump(clf, output_path)
 
 

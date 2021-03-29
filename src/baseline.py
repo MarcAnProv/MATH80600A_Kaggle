@@ -36,9 +36,10 @@ def text_preprocessing(
             strip_accents="ascii",
             ngram_range=(1, 2),
             min_df=0.001,
+            max_features=1000
         )
         vec_abstract = TfidfVectorizer(
-            stop_words="english", strip_accents="ascii", ngram_range=(1, 4), min_df=0.01
+            stop_words="english", strip_accents="ascii", ngram_range=(1, 4), min_df=0.01, max_features=1000
         )
         train_title = vec_title.fit_transform(training_data.title)
         train_abstract = vec_abstract.fit_transform(training_data.abstract)

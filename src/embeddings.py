@@ -33,6 +33,7 @@ class Dataset(Dataset):
 
 
 class GRUClassifier(nn.Module):
+    # TODO: freeze embeddings for first epoch, then unfreeze
     def __init__(self, embedding_matrix, hidden_dim, label_size, num_layers, device):
         super(GRUClassifier, self).__init__()
         self.hidden_dim = hidden_dim
