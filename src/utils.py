@@ -69,10 +69,6 @@ def load_model(name: str):
     return loaded_model
 
 
-def make_submission_csv(predictions):
-    pass
-
-
 def get_logger():
     global logger
     line_format = "%(asctime)s %(levelname)s: %(filename)s:%(funcName)s():%(lineno)d - %(message)s"
