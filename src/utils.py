@@ -1,4 +1,3 @@
-# import gensim.downloader as api
 import joblib
 import logging
 import nltk
@@ -84,13 +83,13 @@ def get_logger():
 
 
 def preprocess_text(data: pd.DataFrame, name: str, test=False):
-    # concat title and abstract
+    # concat title and abstract to consider them as one feature
     data["title_abstract"] = data["title"] + " " + data["abstract"]
     if test:
         data = data[["node_id", "title_abstract"]]
     else:
         data = data[["node_id", "title_abstract", "label"]]
-    # remove punctuation
+    # remove punctuation since it's obsolete
     data["title_abstract"] = data["title_abstract"].str.translate(
         str.maketrans("", "", string.punctuation)
     )
@@ -98,7 +97,7 @@ def preprocess_text(data: pd.DataFrame, name: str, test=False):
     data.to_csv(project_root() + f"/data/{name}.csv", index=False)
 
 
-def process_text(device):
+def process_text(embedding_dim, device):
     training_set, local_test_set, test_set = make_sets(
         "/data/train.csv",
         "/data/text.csv",
@@ -111,7 +110,8 @@ def process_text(device):
     preprocess_text(test_set, "transformed_test", test=True)
     nltk.download("stopwords")
     stop_words = set(stopwords.words("english"))
-    # tokenize, lower and remove stop words
+    # tokenize, lower and remove stop words since
+    # stop words don't give enough information
     TEXT = data.Field(
         tokenize="spacy",
         sequential=True,
@@ -134,11 +134,15 @@ def process_text(device):
         fields=test_fields,
         skip_header=True,
     )
-    # split data
+    # split data, 90% training and 10% validation
     train_data, valid_data = train_dataset.split(
         split_ratio=0.9, random_state=random.seed(42)
     )
-    TEXT.build_vocab(train_data, min_freq=3, vectors="glove.6B.100d")
+    # use glove pre-trained embeddings to have a good word representation
+    # and only consider words that occur at least three times
+    # as part of the vocabulary
+    # since they would not be useful to discriminate
+    TEXT.build_vocab(train_data, min_freq=3, vectors=f"glove.6B.{embedding_dim}d")
     LABEL.build_vocab(train_data)
     # build iterator
     train_iterator, valid_iterator, test_iterator = data.BucketIterator.splits(
@@ -162,8 +166,9 @@ def process_text(device):
 def make_predictions_csv(test_set_path: str, predictions: torch.tensor):
     test_set = pd.read_csv(project_root() + test_set_path)
     # batch to single list of array
-    predictions = [item for sublist in predictions for item in sublist.numpy()]
+    predictions = [item for sublist in predictions for item in sublist.cpu().numpy()]
     test_set["label"] = predictions
     test_set = test_set[["node_id", "label"]]
+    test_set.rename(columns={"node_id": "id"}, inplace=True)
     # save to csv
     test_set.to_csv(project_root() + "/data/predictions.csv", index=False)

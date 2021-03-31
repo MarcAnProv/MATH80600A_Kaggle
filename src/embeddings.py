@@ -73,14 +73,15 @@ def train(model, train_iterator, valid_iterator, epoch, device):
     logger.info("Training loop started")
     optimizer = optim.Adam(model.parameters())
     criterion = nn.CrossEntropyLoss()
-    # decay lr by 0.1 every 10 epochs
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+    # decay lr by 0.1 every 5 epochs to avoid oscillation and help the network converge
+    # otherwise it overfits early on
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
     model.to(device)
     criterion.to(device)
     model.train()
     time_start = time.time()
     for epochs in range(epoch):
-        train_loss, train_acc = _train_one_epoch(model, train_iterator, optimizer, criterion, epoch, device)
+        train_loss, train_acc = _train_one_epoch(model, train_iterator, optimizer, criterion, epochs, device)
         scheduler.step()
         logger.info(f"scheduler lr: {scheduler.get_last_lr()}")
         val_loss, val_acc = _evaluate_one_epoch(model, valid_iterator, criterion, device)
@@ -108,7 +109,7 @@ def main():
         "--embedding_dim",
         help="Dimension of the embeddings",
         type=int,
-        default=100
+        default=300
     )
     parser.add_argument(
         "--hidden_dim",
@@ -134,11 +135,12 @@ def main():
     )
     args = parser.parse_args()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    train_iterator, valid_iterator, test_iterator, vocab_size, pretrained_embeddings = process_text(device)
+    train_iterator, valid_iterator, test_iterator, vocab_size, pretrained_embeddings = process_text(args.embeddin_dim, device)
     model = GRUClassifier(vocab_size, args.embedding_dim, args.hidden_dim, args.output_dim, args.num_layers, device)
-    # load pre-trained embeddings and freeze them
+    # load pre-trained embeddings and freeze them since we do not want to update them
     model.embedding.weight.data.copy_(pretrained_embeddings)
     model.embedding.weight.requires_grad = False
+    logger.info(f"Training model: {print(model)}")
     train(model, train_iterator, valid_iterator, args.epochs, device)
     logger.info("Making predictions and writing them to csv")
     preds = predict(model, test_iterator, device)

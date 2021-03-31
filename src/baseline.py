@@ -19,6 +19,7 @@ def text_preprocessing(
     test_data.replace("\d+", "NUM", regex=True, inplace=True)
     assert vectorizer in ["count_vectorizer", "tfidf"], "Unrecognized vectorizer"
     # vectorizing title and abstract, removing stop words, lowercasing, stripping accents, and ngrams
+    # by only considering ngrams, this helps capture salient features
     if vectorizer == "count_vectorizer":
         logger.info("Vectorizing training set")
         vec_title = CountVectorizer(
@@ -38,6 +39,8 @@ def text_preprocessing(
             min_df=0.001,
             max_features=1000
         )
+        # we only consider 1k features as otherwise that occur at least 1%
+        # this helps capture useful features
         vec_abstract = TfidfVectorizer(
             stop_words="english", strip_accents="ascii", ngram_range=(1, 4), min_df=0.01, max_features=1000
         )
