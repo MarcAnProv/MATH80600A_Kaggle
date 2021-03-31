@@ -1,18 +1,16 @@
-import gensim.downloader as api
+# import gensim.downloader as api
 import joblib
 import logging
 import nltk
-import numpy as np
 import os
 import pandas as pd
+import random
+import string
 import torch
-import torch.nn as nn
 
-
-from gensim.models import KeyedVectors
 from nltk.corpus import stopwords
 from pathlib import Path
-from tqdm import tqdm
+from torchtext.legacy import data
 
 
 def project_root() -> str:
@@ -85,52 +83,87 @@ def get_logger():
     return logger
 
 
-def download_pretrained_embeddings():
-    path_word2vec = api.load("word2vec-google-news-300", return_path=True)
-    model = KeyedVectors.load_word2vec_format(path_word2vec, binary=True)
-    return model
+def preprocess_text(data: pd.DataFrame, name: str, test=False):
+    # concat title and abstract
+    data["title_abstract"] = data["title"] + " " + data["abstract"]
+    if test:
+        data = data[["node_id", "title_abstract"]]
+    else:
+        data = data[["node_id", "title_abstract", "label"]]
+    # remove punctuation
+    data["title_abstract"] = data["title_abstract"].str.translate(
+        str.maketrans("", "", string.punctuation)
+    )
+    # save to csv
+    data.to_csv(project_root() + f"/data/{name}.csv", index=False)
 
 
-def create_vocabulary(training_set: pd.DataFrame) -> list:
-    """Extracts vocabulary from our corpus"""
-    logger.info("Creating vocabulary")
+def process_text(device):
+    training_set, local_test_set, test_set = make_sets(
+        "/data/train.csv",
+        "/data/text.csv",
+        "/data/nodeid2paperid.csv",
+        "/data/test.csv",
+        0.1,
+    )
+    training_set = pd.concat([training_set, local_test_set], ignore_index=True)
+    preprocess_text(training_set, "transformed_training")
+    preprocess_text(test_set, "transformed_test", test=True)
+    nltk.download("stopwords")
     stop_words = set(stopwords.words("english"))
-    tokenizer = nltk.tokenize.RegexpTokenizer(r"\w+")
-    title = training_set.title.tolist()
-    abstract = training_set.abstract.tolist()
-    voc = []
-    # concatenate both lists
-    concat = [*title, *abstract]
-    for sentence in tqdm(concat):
-        # split sentence using tokenizer
-        sentence = tokenizer.tokenize(sentence.lower())
-        # removing stop words
-        for word in sentence:
-            if word not in stop_words:
-                voc.append(word)
-    # get unique words
-    voc = np.unique(voc)
-    return voc
+    # tokenize, lower and remove stop words
+    TEXT = data.Field(
+        tokenize="spacy",
+        sequential=True,
+        batch_first=True,
+        lower=True,
+        stop_words=stop_words,
+    )
+    LABEL = data.LabelField(dtype=torch.float, use_vocab=False, preprocessing=float)
+    train_fields = [(None, None), ("text", TEXT), ("label", LABEL)]
+    test_fields = [(None, None), ("text", TEXT)]
+    train_dataset = data.TabularDataset(
+        path=project_root() + "/data/transformed_training.csv",
+        format="csv",
+        fields=train_fields,
+        skip_header=True,
+    )
+    test_dataset = data.TabularDataset(
+        path=project_root() + "/data/transformed_test.csv",
+        format="csv",
+        fields=test_fields,
+        skip_header=True,
+    )
+    # split data
+    train_data, valid_data = train_dataset.split(
+        split_ratio=0.9, random_state=random.seed(42)
+    )
+    TEXT.build_vocab(train_data, min_freq=3, vectors="glove.6B.100d")
+    LABEL.build_vocab(train_data)
+    # build iterator
+    train_iterator, valid_iterator, test_iterator = data.BucketIterator.splits(
+        (train_data, valid_data, test_dataset),
+        batch_size=64,
+        sort=False,
+        shuffle=False,
+        device=device,
+    )
+    vocab_size = len(TEXT.vocab)
+    pretrained_embeddings = pretrained_embeddings = TEXT.vocab.vectors
+    return (
+        train_iterator,
+        valid_iterator,
+        test_iterator,
+        vocab_size,
+        pretrained_embeddings,
+    )
 
 
-def embedding_matrix(vocabulary: list) -> np.array:
-    """Creates an embedding matrix for the embedding layer"""
-    logger.info("Creating embedding matrix")
-    embed_dim = 300
-    embed = np.zeros((len(vocabulary), embed_dim))
-    words_found = 0
-    model = download_pretrained_embeddings()
-    for index, word in enumerate(vocabulary):
-        try:
-            embed[index] = model[word]
-            words_found += 1
-        except KeyError:
-            embed[index] = np.random.normal(size=(embed_dim))
-    return embed
-
-
-def create_embedding_layer(embedding_matrix: np.array):
-    num_embeddings, embedding_dim = embedding_matrix.size()
-    embedding_layer = nn.Embedding(num_embeddings, embedding_dim)
-    embedding_layer.weight.data.copy_(torch.from_numpy(embedding_matrix))
-    return embedding_layer, embedding_dim
+def make_predictions_csv(test_set_path: str, predictions: torch.tensor):
+    test_set = pd.read_csv(project_root() + test_set_path)
+    # batch to single list of array
+    predictions = [item for sublist in predictions for item in sublist.numpy()]
+    test_set["label"] = predictions
+    test_set = test_set[["node_id", "label"]]
+    # save to csv
+    test_set.to_csv(project_root() + "/data/predictions.csv", index=False)

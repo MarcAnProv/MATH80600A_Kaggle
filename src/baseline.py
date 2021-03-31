@@ -43,15 +43,12 @@ def text_preprocessing(
         )
         train_title = vec_title.fit_transform(training_data.title)
         train_abstract = vec_abstract.fit_transform(training_data.abstract)
-        print(f"title shape : {train_title.shape}")
-        print(f"abstract shape : {train_abstract.shape}")
     # training set
     processed_train = hstack((train_title, train_abstract))
     processed_train = pd.DataFrame.sparse.from_spmatrix(processed_train)
     processed_training_set = pd.concat(
         [training_data[["node_id"]], processed_train, training_data[["label"]]], axis=1
     )
-    print(processed_training_set.shape)
     # test set
     logger.info("Vectorizing test set")
     test_title = vec_title.transform(test_data.title)
@@ -61,7 +58,6 @@ def text_preprocessing(
     processed_test_set = pd.concat(
         [test_data[["node_id"]], processed_test, test_data[["label"]]], axis=1
     )
-    print(processed_test_set.shape)
     return processed_training_set, processed_test_set
 
 
@@ -75,13 +71,14 @@ def train(model, training_set: pd.DataFrame):
         f"Training completed in {(time_elapsed // 60):.0f}m {(time_elapsed % 60):.2f}s"
     )
     logger.info("Saving model")
-    save_model(clf, model.__class__name__)
+    save_model(clf, model.__class__.__name__)
 
 
 def predict(model_name: str, test_data: pd.DataFrame):
     logger.info("Loading model")
     clf = load_model(model_name)
     x_test, y_test = test_data.iloc[:, :-1], test_data.iloc[:, -1]
+    logger.info("Model inference")
     predictions = clf.predict(x_test)
     acc = np.mean(predictions == y_test)
     logger.info(f"Model accuracy : {acc}")
@@ -100,7 +97,7 @@ def main():
     )
     model = SVC(C=0.9, random_state=42)
     train(model, processed_training_set)
-    # predict(model_name, processed_test_set)
+    predict("SVC", processed_test_set)
 
 
 if __name__ == "__main__":
